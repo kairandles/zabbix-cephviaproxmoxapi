@@ -1,0 +1,1488 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+  - uuid: 47ff398bf59b476a8b8234ba73036ef3
+    name: Templates
+  templates:
+  - uuid: 54a44b23c62e4110a3504a78d7fffd80
+    template: Proxmox Ceph API
+    name: Proxmox Ceph API
+    description: |
+      Zabbix Ceph monitoring template via the Proxmox REST API.
+
+      Fetches cluster health, OSD, MON, MGR, and pool data from a single Proxmox node
+      (or load balancer VIP). Set {$PVE.URL.HOST} to your Proxmox host or LB address.
+
+      Auth uses a Proxmox API token — create a read-only user (e.g. zabbix@pve), generate
+      a token, and set {$PVE.TOKEN.ID} and {$PVE.TOKEN.SECRET} accordingly.
+    groups:
+    - name: Templates
+    items:
+    - uuid: 2defcf9d3a9647c2af502d3a2d52924b
+      name: 'Ceph Raw: Cluster Status'
+      type: HTTP_AGENT
+      key: proxmox.ceph.raw.status
+      delay: 1m
+      history: '0'
+      value_type: TEXT
+      trends: '0'
+      url: https://{$PVE.URL.HOST}:8006/api2/json/cluster/ceph/status
+      timeout: 15s
+      headers:
+      - name: Authorization
+        value: 'PVEAPIToken={$PVE.TOKEN.ID}={$PVE.TOKEN.SECRET}'
+      verify_peer: 'NO'
+      verify_host: 'NO'
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.data
+      tags:
+      - tag: component
+        value: raw
+
+    - uuid: 6ac915bb4e27410da99b53cee1158826
+      name: 'Ceph Raw: OSDs'
+      type: HTTP_AGENT
+      key: proxmox.ceph.raw.osd
+      delay: 1m
+      history: '0'
+      value_type: TEXT
+      trends: '0'
+      url: https://{$PVE.URL.HOST}:8006/api2/json/nodes/{$PVE.NODE}/ceph/osd
+      timeout: 15s
+      headers:
+      - name: Authorization
+        value: 'PVEAPIToken={$PVE.TOKEN.ID}={$PVE.TOKEN.SECRET}'
+      verify_peer: 'NO'
+      verify_host: 'NO'
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.data
+      tags:
+      - tag: component
+        value: raw
+
+    - uuid: cfc00e0ab01345d78e1818f5bf66eaad
+      name: 'Ceph Raw: MONs'
+      type: HTTP_AGENT
+      key: proxmox.ceph.raw.mon
+      delay: 1m
+      history: '0'
+      value_type: TEXT
+      trends: '0'
+      url: https://{$PVE.URL.HOST}:8006/api2/json/nodes/{$PVE.NODE}/ceph/mon
+      timeout: 15s
+      headers:
+      - name: Authorization
+        value: 'PVEAPIToken={$PVE.TOKEN.ID}={$PVE.TOKEN.SECRET}'
+      verify_peer: 'NO'
+      verify_host: 'NO'
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.data
+      tags:
+      - tag: component
+        value: raw
+
+    - uuid: 38cbe2767e204a3ea0260234b2323563
+      name: 'Ceph Raw: MGRs'
+      type: HTTP_AGENT
+      key: proxmox.ceph.raw.mgr
+      delay: 1m
+      history: '0'
+      value_type: TEXT
+      trends: '0'
+      url: https://{$PVE.URL.HOST}:8006/api2/json/nodes/{$PVE.NODE}/ceph/mgr
+      timeout: 15s
+      headers:
+      - name: Authorization
+        value: 'PVEAPIToken={$PVE.TOKEN.ID}={$PVE.TOKEN.SECRET}'
+      verify_peer: 'NO'
+      verify_host: 'NO'
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.data
+      tags:
+      - tag: component
+        value: raw
+
+    - uuid: 5e773f8e810d4279b50c26b3e933348e
+      name: 'Ceph Raw: Pools'
+      type: HTTP_AGENT
+      key: proxmox.ceph.raw.pool
+      delay: 1m
+      history: '0'
+      value_type: TEXT
+      trends: '0'
+      url: https://{$PVE.URL.HOST}:8006/api2/json/nodes/{$PVE.NODE}/ceph/pool
+      timeout: 15s
+      headers:
+      - name: Authorization
+        value: 'PVEAPIToken={$PVE.TOKEN.ID}={$PVE.TOKEN.SECRET}'
+      verify_peer: 'NO'
+      verify_host: 'NO'
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.data
+      tags:
+      - tag: component
+        value: raw
+
+    # ── Cluster health ────────────────────────────────────────────────────────
+    - uuid: b489bab4957f4e518556c8a8b4223861
+      name: Cluster Health Status
+      type: DEPENDENT
+      key: ceph.cluster.health
+      delay: '0'
+      history: 90d
+      value_type: TEXT
+      trends: '0'
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.health.status
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 1m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+      triggers:
+      - uuid: 3200ccba67cb465dbbc5fbdc55aa33c7
+        expression: find(/Proxmox Ceph API/ceph.cluster.health,#1,"regexp","HEALTH_ERR")=1
+        name: 'Ceph cluster health is HEALTH_ERR'
+        priority: DISASTER
+        description: The Ceph cluster is reporting HEALTH_ERR. This indicates a serious condition that may affect
+          data integrity or availability. Check the Proxmox Ceph dashboard immediately for active health checks.
+          Common causes include a failed OSD, insufficient replicas, or a clock skew between MONs. Do not ignore
+          HEALTH_ERR — data loss is possible if the condition is not resolved promptly.
+      - uuid: c5fd3386d7414f05be8cef872de6a7be
+        expression: find(/Proxmox Ceph API/ceph.cluster.health,#1,"regexp","HEALTH_WARN")=1
+        name: 'Ceph cluster health is HEALTH_WARN'
+        priority: AVERAGE
+        description: The Ceph cluster is reporting HEALTH_WARN. The cluster is operational but has a condition
+          that requires attention. Check the Proxmox Ceph dashboard for the specific health check that is firing.
+          Common causes include a slow OSD, a clock skew, a nearly-full OSD, or a PG imbalance. Resolve before
+          the condition escalates to HEALTH_ERR.
+
+    - uuid: 1ff7e2d825e1435aa84a0557259dc940
+      name: Cluster Health Checks
+      type: DEPENDENT
+      key: ceph.cluster.health.checks
+      delay: '0'
+      history: 7d
+      value_type: TEXT
+      trends: '0'
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var d = JSON.parse(value);
+          var checks = (d.health || {}).checks || {};
+          return JSON.stringify(checks);
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 5m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    # ── OSD map ───────────────────────────────────────────────────────────────
+    - uuid: 6341b3af9d044c62a354c654a2f9f58e
+      name: OSDs Total
+      type: DEPENDENT
+      key: ceph.cluster.osds.total
+      delay: '0'
+      history: 90d
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.osdmap.num_osds
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 5m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    - uuid: 656b7951da794c6282cbdc89c251576d
+      name: OSDs Up
+      type: DEPENDENT
+      key: ceph.cluster.osds.up
+      delay: '0'
+      history: 90d
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.osdmap.num_up_osds
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 2m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+      triggers:
+      - uuid: a878899429574e0e9dd38b344eaba65a
+        expression: last(/Proxmox Ceph API/ceph.cluster.osds.up)<last(/Proxmox Ceph API/ceph.cluster.osds.total)
+          and last(/Proxmox Ceph API/ceph.cluster.osds.total)>0
+        name: 'One or more Ceph OSDs are down ({ITEM.LASTVALUE} up of {?last(/Proxmox Ceph API/ceph.cluster.osds.total)} total)'
+        priority: HIGH
+        description: At least one OSD is not in an up state. The cluster will continue operating with reduced
+          redundancy but PGs assigned to the failed OSD(s) will be degraded. Check the OSD discovery triggers
+          to identify the specific disk. If the OSD does not recover automatically within a few minutes, inspect
+          the disk and the Proxmox node it resides on.
+
+    - uuid: 139c2e7c968d4106b2e541e789e17233
+      name: OSDs In
+      type: DEPENDENT
+      key: ceph.cluster.osds.in
+      delay: '0'
+      history: 90d
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.osdmap.num_in_osds
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 2m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    # ── PG map ────────────────────────────────────────────────────────────────
+    - uuid: b5bf705acfb04ab0a80b321e02fa87f7
+      name: PGs Total
+      type: DEPENDENT
+      key: ceph.cluster.pgs.total
+      delay: '0'
+      history: 90d
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.pgmap.num_pgs
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 5m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    - uuid: eadcccce835d4422b00ecd66199e0dd9
+      name: PGs Active+Clean
+      type: DEPENDENT
+      key: ceph.cluster.pgs.active_clean
+      delay: '0'
+      history: 90d
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var d = JSON.parse(value);
+          var states = (d.pgmap || {}).pgs_by_state || [];
+          var count = 0;
+          for (var i = 0; i < states.length; i++) {
+              if (states[i].state_name === 'active+clean') count += states[i].count;
+          }
+          return count;
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 2m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    - uuid: c4010741e29b4d6d9c2966b81fb0184c
+      name: PGs Degraded
+      type: DEPENDENT
+      key: ceph.cluster.pgs.degraded
+      delay: '0'
+      history: 90d
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var d = JSON.parse(value);
+          var states = (d.pgmap || {}).pgs_by_state || [];
+          var count = 0;
+          for (var i = 0; i < states.length; i++) {
+              if (states[i].state_name.indexOf('degraded') !== -1) count += states[i].count;
+          }
+          return count;
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 2m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+      triggers:
+      - uuid: 2040b0c2f98848c4abc5c622c549f05e
+        expression: last(/Proxmox Ceph API/ceph.cluster.pgs.degraded)>0
+        name: 'Ceph has {ITEM.LASTVALUE} degraded PG(s)'
+        priority: AVERAGE
+        description: One or more placement groups are degraded, meaning not all replicas are available. The
+          cluster is self-healing but performance may be reduced during recovery. Monitor the count — if it
+          grows rather than shrinks, or if recovery stalls, check OSD status and available space. A degraded
+          cluster is at increased risk from a second OSD failure.
+
+    - uuid: 8e70b12ecc2549a589bb0d32c7cd4bbf
+      name: PGs Backfilling
+      type: DEPENDENT
+      key: ceph.cluster.pgs.backfilling
+      delay: '0'
+      history: 90d
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var d = JSON.parse(value);
+          var states = (d.pgmap || {}).pgs_by_state || [];
+          var count = 0;
+          for (var i = 0; i < states.length; i++) {
+              if (states[i].state_name.indexOf('backfill') !== -1) count += states[i].count;
+          }
+          return count;
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 2m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    - uuid: 82cd017b85cc42e19c4bcff19c497f92
+      name: PGs Recovering
+      type: DEPENDENT
+      key: ceph.cluster.pgs.recovering
+      delay: '0'
+      history: 90d
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var d = JSON.parse(value);
+          var states = (d.pgmap || {}).pgs_by_state || [];
+          var count = 0;
+          for (var i = 0; i < states.length; i++) {
+              if (states[i].state_name.indexOf('recover') !== -1) count += states[i].count;
+          }
+          return count;
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 2m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    - uuid: 30cdf6a896064f3db99d34238522ed3a
+      name: PGs Stale
+      type: DEPENDENT
+      key: ceph.cluster.pgs.stale
+      delay: '0'
+      history: 90d
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var d = JSON.parse(value);
+          var states = (d.pgmap || {}).pgs_by_state || [];
+          var count = 0;
+          for (var i = 0; i < states.length; i++) {
+              if (states[i].state_name.indexOf('stale') !== -1) count += states[i].count;
+          }
+          return count;
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 2m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+      triggers:
+      - uuid: 98af742c0a4846f6a88c39a2018afd83
+        expression: last(/Proxmox Ceph API/ceph.cluster.pgs.stale)>0
+        name: 'Ceph has {ITEM.LASTVALUE} stale PG(s)'
+        priority: HIGH
+        description: Stale PGs have not received an update from their primary OSD. This usually means the OSD
+          responsible for those PGs is down or unreachable, and data in those PGs may be unavailable to clients.
+          Check OSD status and MON quorum. If OSDs look healthy, the MON may need to be restarted on the
+          affected node.
+
+    # ── I/O stats ─────────────────────────────────────────────────────────────
+    - uuid: 7f2e92f0701e494abf4eef93390ab927
+      name: Cluster Read IOPS
+      type: DEPENDENT
+      key: ceph.cluster.io.read_ops
+      delay: '0'
+      history: 90d
+      value_type: FLOAT
+      units: ops/s
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.pgmap.read_op_per_sec
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    - uuid: 5a014e93da4b425d811f2d8396abb188
+      name: Cluster Write IOPS
+      type: DEPENDENT
+      key: ceph.cluster.io.write_ops
+      delay: '0'
+      history: 90d
+      value_type: FLOAT
+      units: ops/s
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.pgmap.write_op_per_sec
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    - uuid: 78f78dac88db4827bdbb9ac6a728cc61
+      name: Cluster Read Throughput
+      type: DEPENDENT
+      key: ceph.cluster.io.read_bytes
+      delay: '0'
+      history: 90d
+      value_type: FLOAT
+      units: Bps
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.pgmap.read_bytes_sec
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    - uuid: 831e7beaeaf14c7ebb3f02dd926d2520
+      name: Cluster Write Throughput
+      type: DEPENDENT
+      key: ceph.cluster.io.write_bytes
+      delay: '0'
+      history: 90d
+      value_type: FLOAT
+      units: Bps
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.pgmap.write_bytes_sec
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    # ── Storage capacity ──────────────────────────────────────────────────────
+    - uuid: 2e28ec66950e41d29ba799f5268ee027
+      name: Cluster Storage Total
+      type: DEPENDENT
+      key: ceph.cluster.storage.total
+      delay: '0'
+      history: 90d
+      value_type: FLOAT
+      units: B
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.pgmap.bytes_total
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 10m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    - uuid: 2f4048bdba3b476ea37c75f901dfdd5f
+      name: Cluster Storage Used
+      type: DEPENDENT
+      key: ceph.cluster.storage.used
+      delay: '0'
+      history: 90d
+      value_type: FLOAT
+      units: B
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.pgmap.bytes_used
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    - uuid: f28a28e0c1f246e092d87aaa19079bba
+      name: Cluster Storage Available
+      type: DEPENDENT
+      key: ceph.cluster.storage.avail
+      delay: '0'
+      history: 90d
+      value_type: FLOAT
+      units: B
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.pgmap.bytes_avail
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    - uuid: 5477d3289eac4eb4b91dfd50f0f7af42
+      name: Cluster Storage Used %
+      type: DEPENDENT
+      key: ceph.cluster.storage.used.pct
+      delay: '0'
+      history: 90d
+      value_type: FLOAT
+      units: '%'
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var d = JSON.parse(value);
+          var used = (d.pgmap || {}).bytes_used || 0;
+          var total = (d.pgmap || {}).bytes_total || 0;
+          if (total === 0) return 0;
+          return (used / total * 100).toFixed(2);
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 5m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+      triggers:
+      - uuid: 765be9f357554b2e932b46d34575ea9e
+        expression: last(/Proxmox Ceph API/ceph.cluster.storage.used.pct)>last(/Proxmox Ceph API/ceph.cluster.safe.nearfull.pct)
+        name: 'Ceph cluster storage usage exceeds safe nearfull ratio: {ITEM.LASTVALUE}%'
+        priority: DISASTER
+        description: Ceph cluster raw usage has exceeded the calculated safe nearfull ratio for this cluster
+          (total_raw - largest_node) / total_raw. Above this point, Ceph cannot fully rebalance after losing
+          the biggest node. Plan capacity expansion or remove data immediately to restore the safety margin.
+      - uuid: c3e373a2bfaf4d818808164dc1fe5c4f
+        expression: last(/Proxmox Ceph API/ceph.cluster.storage.used.pct)>last(/Proxmox Ceph API/ceph.cluster.safe.nearfull.pct)*0.85
+          and last(/Proxmox Ceph API/ceph.cluster.storage.used.pct)<=last(/Proxmox Ceph API/ceph.cluster.safe.nearfull.pct)
+        name: 'Ceph cluster storage approaching safe nearfull ratio: {ITEM.LASTVALUE}%'
+        priority: AVERAGE
+        description: Ceph cluster raw usage has exceeded 85% of the calculated safe nearfull ratio for this
+          cluster. At the safe nearfull boundary the cluster can no longer fully rebalance after losing the
+          largest node. Plan capacity expansion now before the HIGH threshold fires.
+
+    # ── Safe nearfull calculation ─────────────────────────────────────────────
+    - uuid: c7fcabb485624467bab34aae98e69f6f
+      name: Largest Node Raw Capacity
+      type: DEPENDENT
+      key: ceph.cluster.node.raw.max
+      delay: '0'
+      history: 90d
+      value_type: FLOAT
+      units: B
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var d = JSON.parse(value);
+          var nodeTotals = {};
+          function walk(node) {
+              if (node.type === 'osd' && node.status === 'up' && node.in === 1) {
+                  var h = node.host || 'unknown';
+                  nodeTotals[h] = (nodeTotals[h] || 0) + (node.total_space || 0);
+              }
+              var children = node.children || [];
+              for (var i = 0; i < children.length; i++) walk(children[i]);
+          }
+          walk(d.root || {});
+          var max = 0;
+          var hosts = Object.keys(nodeTotals);
+          for (var i = 0; i < hosts.length; i++) {
+              if (nodeTotals[hosts[i]] > max) max = nodeTotals[hosts[i]];
+          }
+          return max;
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 10m
+      master_item:
+        key: proxmox.ceph.raw.osd
+      tags:
+      - tag: component
+        value: cluster
+
+    - uuid: 2006a47ba3f04844bfb336305969a58b
+      name: Safe Nearfull Ratio %
+      type: CALCULATED
+      key: ceph.cluster.safe.nearfull.pct
+      delay: 1m
+      history: 90d
+      value_type: FLOAT
+      units: '%'
+      params: (last(//ceph.cluster.storage.total)-last(//ceph.cluster.node.raw.max))/last(//ceph.cluster.storage.total)*100
+      description: The maximum safe raw cluster usage percentage for this specific cluster topology. Calculated
+        as (total_raw - largest_single_node_raw) / total_raw * 100. If usage exceeds this value, Ceph cannot
+        fully rebalance data after losing the largest node. This is the correct nearfull ratio to set in Ceph
+        and to alarm on in Zabbix for any cluster size.
+      tags:
+      - tag: component
+        value: cluster
+
+    # ── Active MGR count ──────────────────────────────────────────────────────
+    - uuid: 456a45f49fd64ad5a78b7dff8b3563b9
+      name: Active MGR Count
+      type: DEPENDENT
+      key: ceph.cluster.mgr.active_count
+      delay: '0'
+      history: 90d
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var d = JSON.parse(value);
+          var mgr = Array.isArray(d) ? d : [];
+          var count = 0;
+          for (var i = 0; i < mgr.length; i++) {
+              if (mgr[i].state === 'active') count++;
+          }
+          return count;
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 2m
+      master_item:
+        key: proxmox.ceph.raw.mgr
+      tags:
+      - tag: component
+        value: cluster
+      triggers:
+      - uuid: 37e02df0615a473a9a24472ad745e26e
+        expression: last(/Proxmox Ceph API/ceph.cluster.mgr.active_count)=0
+        name: 'No active Ceph MGR'
+        priority: HIGH
+        description: There is no active Ceph MGR. The MGR provides cluster metrics, the dashboard, and
+          orchestration features. Without an active MGR, monitoring data will be unavailable and some cluster
+          operations will fail. Restart the ceph-mgr service on any Proxmox node using
+          "systemctl restart ceph-mgr@<node>.service"
+
+    # ── MON quorum age ────────────────────────────────────────────────────────
+    - uuid: c843d50f466d48ed9574e26aa405aa13
+      name: MON Quorum Age
+      type: DEPENDENT
+      key: ceph.cluster.mons.quorum_age
+      delay: '0'
+      history: 90d
+      value_type: FLOAT
+      units: s
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.quorum_age
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 5m
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    # ── Cluster FSID ──────────────────────────────────────────────────────────
+    - uuid: f80886f1d2d24782838ff609960f4bea
+      name: Cluster FSID
+      type: DEPENDENT
+      key: ceph.cluster.fsid
+      delay: '0'
+      history: 90d
+      value_type: TEXT
+      trends: '0'
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.monmap.fsid
+        error_handler: CUSTOM_VALUE
+        error_handler_params: ''
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 1h
+      master_item:
+        key: proxmox.ceph.raw.status
+      tags:
+      - tag: component
+        value: cluster
+
+    discovery_rules:
+    # ── OSD discovery ─────────────────────────────────────────────────────────
+    - uuid: c45e9398e32d4dd180b08d7944891763
+      name: Discover OSDs
+      type: DEPENDENT
+      key: ceph.osd.discovery
+      delay: '0'
+      item_prototypes:
+      - uuid: 7086157e3bac4facbb49694d6ba81d6f
+        name: 'OSD {#OSDNAME} ({#OSDHOST}) Status'
+        type: DEPENDENT
+        key: ceph.osd.status[{#OSDID}]
+        delay: '0'
+        history: 90d
+        value_type: TEXT
+        trends: '0'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var id = '{#OSDID}';
+            function findOsd(node) {
+                if (node.type === 'osd' && String(node.id) === id) return node;
+                var children = node.children || [];
+                for (var i = 0; i < children.length; i++) {
+                    var r = findOsd(children[i]); if (r) return r;
+                }
+                return null;
+            }
+            var osd = findOsd(d.root || {});
+            return osd ? (osd.status || 'unknown') : 'unknown';
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 2m
+        master_item:
+          key: proxmox.ceph.raw.osd
+        tags:
+        - tag: component
+          value: osd
+        - tag: osd
+          value: '{#OSDNAME}'
+        trigger_prototypes:
+        - uuid: 7322d9d2f8da4e2799c7fdf65a7782f2
+          expression: find(/Proxmox Ceph API/ceph.osd.status[{#OSDID}],#1,"regexp","^up$")<>1
+          name: '{#OSDNAME} on {#OSDHOST} is DOWN'
+          priority: HIGH
+          description: OSD {#OSDNAME} on {#OSDHOST} is not in an up state (reported as {ITEM.LASTVALUE}). With
+            3x replication the remaining replicas continue serving data without interruption — no data is lost
+            at this point. Ceph will begin re-replicating affected PGs automatically. Investigate during working
+            hours. Check disk health on {#OSDHOST} and review system logs. If the disk has physically failed,
+            replace it and re-add to Ceph. Do not leave a failed OSD down indefinitely — if a second OSD fails
+            on the same PGs before recovery completes, data could become unavailable.
+
+      - uuid: 9af82f0496024aab9b926fd83e074f6c
+        name: 'OSD {#OSDNAME} ({#OSDHOST}) In'
+        type: DEPENDENT
+        key: ceph.osd.in[{#OSDID}]
+        delay: '0'
+        history: 90d
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var id = '{#OSDID}';
+            function findOsd(node) {
+                if (node.type === 'osd' && String(node.id) === id) return node;
+                var children = node.children || [];
+                for (var i = 0; i < children.length; i++) {
+                    var r = findOsd(children[i]); if (r) return r;
+                }
+                return null;
+            }
+            var osd = findOsd(d.root || {});
+            return osd ? osd.in : 0;
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 2m
+        master_item:
+          key: proxmox.ceph.raw.osd
+        tags:
+        - tag: component
+          value: osd
+        - tag: osd
+          value: '{#OSDNAME}'
+        trigger_prototypes:
+        - uuid: 6ea89e1b1726425aacaae24bcb07462f
+          expression: last(/Proxmox Ceph API/ceph.osd.in[{#OSDID}])=0
+            and find(/Proxmox Ceph API/ceph.osd.status[{#OSDID}],#1,"regexp","^up$")=1
+          name: '{#OSDNAME} on {#OSDHOST} is UP but marked OUT'
+          priority: AVERAGE
+          description: OSD {#OSDNAME} is running but marked out of the cluster and not receiving new PGs. This
+            is expected during a planned OSD removal. If unintentional, check whether someone ran
+            'ceph osd out {#OSDID}' recently. The cluster is fully operational but has reduced redundancy on
+            the affected PGs. Resolve during working hours by running 'ceph osd in {#OSDID}' on {#OSDHOST}
+            if the out state was not intentional.
+
+      - uuid: 758d3dc0cbc94c2f95ac2d4f38c8b35d
+        name: 'OSD {#OSDNAME} ({#OSDHOST}) Usage %'
+        type: DEPENDENT
+        key: ceph.osd.usage.pct[{#OSDID}]
+        delay: '0'
+        history: 90d
+        value_type: FLOAT
+        units: '%'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var id = '{#OSDID}';
+            function findOsd(node) {
+                if (node.type === 'osd' && String(node.id) === id) return node;
+                var children = node.children || [];
+                for (var i = 0; i < children.length; i++) {
+                    var r = findOsd(children[i]); if (r) return r;
+                }
+                return null;
+            }
+            var osd = findOsd(d.root || {});
+            return osd ? (osd.percent_used || 0) : 0;
+        master_item:
+          key: proxmox.ceph.raw.osd
+        tags:
+        - tag: component
+          value: osd
+        - tag: osd
+          value: '{#OSDNAME}'
+        trigger_prototypes:
+        - uuid: 2da64ae153fc4387a81968284d50eedb
+          expression: last(/Proxmox Ceph API/ceph.osd.usage.pct[{#OSDID}])>{$CEPH.OSD.USAGE.HIGH}
+          name: '{#OSDNAME} on {#OSDHOST} usage critical: {ITEM.LASTVALUE}% (threshold: {$CEPH.OSD.USAGE.HIGH}%)'
+          priority: HIGH
+          description: OSD {#OSDNAME} on {#OSDHOST} is {ITEM.LASTVALUE}% full, exceeding the critical threshold
+            ({$CEPH.OSD.USAGE.HIGH}%). An OSD approaching 100% will be marked full and stop accepting writes,
+            affecting all pools that use it. Rebalance the cluster or expand capacity to bring usage down.
+        - uuid: 1b3fa2bef61e4ed889e1fdc82424822e
+          expression: last(/Proxmox Ceph API/ceph.osd.usage.pct[{#OSDID}])>{$CEPH.OSD.USAGE.WARN}
+            and last(/Proxmox Ceph API/ceph.osd.usage.pct[{#OSDID}])<={$CEPH.OSD.USAGE.HIGH}
+          name: '{#OSDNAME} on {#OSDHOST} usage high: {ITEM.LASTVALUE}% (threshold: {$CEPH.OSD.USAGE.WARN}%)'
+          priority: WARNING
+          description: OSD {#OSDNAME} on {#OSDHOST} usage is above the warning threshold ({$CEPH.OSD.USAGE.WARN}%).
+            Monitor for further growth. At {$CEPH.OSD.USAGE.HIGH}% a critical alert will fire.
+
+      - uuid: da7de26d6a0e49609f65a6b179d165c5
+        name: 'OSD {#OSDNAME} ({#OSDHOST}) Bytes Used'
+        type: DEPENDENT
+        key: ceph.osd.bytes_used[{#OSDID}]
+        delay: '0'
+        history: 90d
+        value_type: FLOAT
+        units: B
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var id = '{#OSDID}';
+            function findOsd(node) {
+                if (node.type === 'osd' && String(node.id) === id) return node;
+                var children = node.children || [];
+                for (var i = 0; i < children.length; i++) {
+                    var r = findOsd(children[i]); if (r) return r;
+                }
+                return null;
+            }
+            var osd = findOsd(d.root || {});
+            return osd ? (osd.bytes_used || 0) : 0;
+        master_item:
+          key: proxmox.ceph.raw.osd
+        tags:
+        - tag: component
+          value: osd
+        - tag: osd
+          value: '{#OSDNAME}'
+
+      - uuid: 8830a60f00e448a9a51294b6b656fa7c
+        name: 'OSD {#OSDNAME} ({#OSDHOST}) PG Count'
+        type: DEPENDENT
+        key: ceph.osd.pgs[{#OSDID}]
+        delay: '0'
+        history: 90d
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var id = '{#OSDID}';
+            function findOsd(node) {
+                if (node.type === 'osd' && String(node.id) === id) return node;
+                var children = node.children || [];
+                for (var i = 0; i < children.length; i++) {
+                    var r = findOsd(children[i]); if (r) return r;
+                }
+                return null;
+            }
+            var osd = findOsd(d.root || {});
+            return osd ? (osd.pgs || 0) : 0;
+        master_item:
+          key: proxmox.ceph.raw.osd
+        tags:
+        - tag: component
+          value: osd
+        - tag: osd
+          value: '{#OSDNAME}'
+
+      - uuid: 42a32427151c4d33b6529ddcb0d5b561
+        name: 'OSD {#OSDNAME} ({#OSDHOST}) Apply Latency'
+        type: DEPENDENT
+        key: ceph.osd.apply_latency[{#OSDID}]
+        delay: '0'
+        history: 90d
+        value_type: FLOAT
+        units: ms
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var id = '{#OSDID}';
+            function findOsd(node) {
+                if (node.type === 'osd' && String(node.id) === id) return node;
+                var children = node.children || [];
+                for (var i = 0; i < children.length; i++) {
+                    var r = findOsd(children[i]); if (r) return r;
+                }
+                return null;
+            }
+            var osd = findOsd(d.root || {});
+            return osd ? (osd.apply_latency_ms || 0) : 0;
+        master_item:
+          key: proxmox.ceph.raw.osd
+        tags:
+        - tag: component
+          value: osd
+        - tag: osd
+          value: '{#OSDNAME}'
+        trigger_prototypes:
+        - uuid: c0acb0de0cbb4ad5ba2f17b0dca1d238
+          expression: last(/Proxmox Ceph API/ceph.osd.apply_latency[{#OSDID}])>{$CEPH.OSD.LATENCY.WARN}
+            and last(/Proxmox Ceph API/ceph.osd.apply_latency[{#OSDID}])>0
+          name: '{#OSDNAME} on {#OSDHOST} apply latency high: {ITEM.LASTVALUE}ms (threshold: {$CEPH.OSD.LATENCY.WARN}ms)'
+          priority: WARNING
+          description: OSD {#OSDNAME} apply latency is elevated at {ITEM.LASTVALUE}ms. High apply latency
+            indicates the OSD disk is struggling to commit writes, which will reduce cluster write throughput.
+            Check disk health, I/O utilisation, and system load on {#OSDHOST}. A failing or overloaded disk
+            is the most common cause.
+
+      - uuid: 173749d47e2f4d8d82c1ec9074738fca
+        name: 'OSD {#OSDNAME} ({#OSDHOST}) Commit Latency'
+        type: DEPENDENT
+        key: ceph.osd.commit_latency[{#OSDID}]
+        delay: '0'
+        history: 90d
+        value_type: FLOAT
+        units: ms
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var id = '{#OSDID}';
+            function findOsd(node) {
+                if (node.type === 'osd' && String(node.id) === id) return node;
+                var children = node.children || [];
+                for (var i = 0; i < children.length; i++) {
+                    var r = findOsd(children[i]); if (r) return r;
+                }
+                return null;
+            }
+            var osd = findOsd(d.root || {});
+            return osd ? (osd.commit_latency_ms || 0) : 0;
+        master_item:
+          key: proxmox.ceph.raw.osd
+        tags:
+        - tag: component
+          value: osd
+        - tag: osd
+          value: '{#OSDNAME}'
+        trigger_prototypes:
+        - uuid: 5f9af72d77824a8eb3586df2a611dba1
+          expression: last(/Proxmox Ceph API/ceph.osd.commit_latency[{#OSDID}])>{$CEPH.OSD.LATENCY.WARN}
+            and last(/Proxmox Ceph API/ceph.osd.commit_latency[{#OSDID}])>0
+          name: '{#OSDNAME} on {#OSDHOST} commit latency high: {ITEM.LASTVALUE}ms (threshold: {$CEPH.OSD.LATENCY.WARN}ms)'
+          priority: WARNING
+          description: OSD {#OSDNAME} commit latency is elevated at {ITEM.LASTVALUE}ms. High commit latency
+            indicates the journal or disk is slow to acknowledge writes. Check disk health and I/O wait on
+            {#OSDHOST}. Sustained high commit latency can cause client timeouts and reduced throughput.
+
+      master_item:
+        key: proxmox.ceph.raw.osd
+      lld_macro_paths:
+      - lld_macro: '{#OSDID}'
+        path: $.id
+      - lld_macro: '{#OSDNAME}'
+        path: $.name
+      - lld_macro: '{#OSDHOST}'
+        path: $.host
+      - lld_macro: '{#OSDDEVCLASS}'
+        path: $.device_class
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var d = JSON.parse(value);
+          var osds = [];
+          function walk(node) {
+              if (node.type === 'osd') {
+                  osds.push({id: node.id, name: node.name, host: node.host || '', device_class: node.device_class || ''});
+              }
+              var children = node.children || [];
+              for (var i = 0; i < children.length; i++) walk(children[i]);
+          }
+          walk(d.root || {});
+          return JSON.stringify(osds);
+
+    # ── MON discovery ─────────────────────────────────────────────────────────
+    - uuid: f5974c9aae3845f0a2bbcf112b2ebe06
+      name: Discover MONs
+      type: DEPENDENT
+      key: ceph.mon.discovery
+      delay: '0'
+      item_prototypes:
+      - uuid: 33a141325426432c8e28b129df3a6990
+        name: 'MON {#MONNAME} State'
+        type: DEPENDENT
+        key: ceph.mon.state[{#MONNAME}]
+        delay: '0'
+        history: 90d
+        value_type: TEXT
+        trends: '0'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var name = '{#MONNAME}';
+            var mons = Array.isArray(d) ? d : [];
+            for (var i = 0; i < mons.length; i++) {
+                if (mons[i].name === name) return mons[i].state || 'unknown';
+            }
+            return 'unknown';
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 2m
+        master_item:
+          key: proxmox.ceph.raw.mon
+        tags:
+        - tag: component
+          value: mon
+        - tag: mon
+          value: '{#MONNAME}'
+        trigger_prototypes:
+        - uuid: 7ac76da568d94568ab89ab9cb502fc99
+          expression: find(/Proxmox Ceph API/ceph.mon.state[{#MONNAME}],#1,"regexp","^running$")<>1
+          name: 'Ceph MON {#MONNAME} ({#MONHOST}) is not running (state: {ITEM.LASTVALUE})'
+          priority: HIGH
+          description: Ceph MON {#MONNAME} on {#MONHOST} is not in a running state. The cluster requires a
+            quorum of MONs to operate. With a 5-node cluster, losing more than 2 MONs breaks quorum and halts
+            all Ceph I/O. Investigate {#MONHOST} immediately — check the ceph-mon service with
+            'systemctl status ceph-mon@{#MONNAME}'.
+
+      - uuid: f26d52a1fc6140049c77e3eabf677838
+        name: 'MON {#MONNAME} In Quorum'
+        type: DEPENDENT
+        key: ceph.mon.quorum[{#MONNAME}]
+        delay: '0'
+        history: 90d
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var name = '{#MONNAME}';
+            var mons = Array.isArray(d) ? d : [];
+            for (var i = 0; i < mons.length; i++) {
+                if (mons[i].name === name) return mons[i].quorum !== undefined ? mons[i].quorum : 0;
+            }
+            return 0;
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 2m
+        master_item:
+          key: proxmox.ceph.raw.mon
+        tags:
+        - tag: component
+          value: mon
+        - tag: mon
+          value: '{#MONNAME}'
+        trigger_prototypes:
+        - uuid: 5c275f202da6466fa46d0167f6457f4a
+          expression: last(/Proxmox Ceph API/ceph.mon.quorum[{#MONNAME}])=0
+          name: 'Ceph MON {#MONNAME} ({#MONHOST}) is NOT in quorum'
+          priority: HIGH
+          description: Ceph MON {#MONNAME} on {#MONHOST} is not participating in quorum. With 5 MONs, quorum
+            requires 3 — losing one leaves 4 active MONs which is still one redundant. Cluster I/O is
+            completely unaffected at this point. Investigate during working hours. If a second MON goes down
+            before this is resolved, you will still have quorum but with no redundancy left — at that point
+            escalate urgently.
+
+      master_item:
+        key: proxmox.ceph.raw.mon
+      lld_macro_paths:
+      - lld_macro: '{#MONNAME}'
+        path: $.name
+      - lld_macro: '{#MONHOST}'
+        path: $.host
+      - lld_macro: '{#MONADDR}'
+        path: $.addr
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.mon
+
+    # ── MGR discovery ─────────────────────────────────────────────────────────
+    - uuid: b5d3a0f9684648e386ab2339934fd4d2
+      name: Discover MGRs
+      type: DEPENDENT
+      key: ceph.mgr.discovery
+      delay: '0'
+      item_prototypes:
+      - uuid: 745ab2ad02684b91932e741bea68b078
+        name: 'MGR {#MGRNAME} State'
+        type: DEPENDENT
+        key: ceph.mgr.state[{#MGRNAME}]
+        delay: '0'
+        history: 90d
+        value_type: TEXT
+        trends: '0'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var name = '{#MGRNAME}';
+            var mgr = Array.isArray(d) ? d : [];
+            for (var i = 0; i < mgr.length; i++) {
+                if (mgr[i].name === name) return mgr[i].state || 'unknown';
+            }
+            return 'unknown';
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 2m
+        master_item:
+          key: proxmox.ceph.raw.mgr
+        tags:
+        - tag: component
+          value: mgr
+        - tag: mgr
+          value: '{#MGRNAME}'
+        trigger_prototypes:
+        - uuid: 61cf00fe48114e69be895c36f20f2f20
+          expression: change(/Proxmox Ceph API/ceph.mgr.state[{#MGRNAME}])=1
+          name: 'Ceph MGR {#MGRNAME} state changed to {ITEM.LASTVALUE}'
+          priority: INFO
+          manual_close: 'YES'
+          description: Ceph MGR {#MGRNAME} state has changed to {ITEM.LASTVALUE}. An active-to-standby
+            transition means a MGR failover has occurred. The cluster continues operating normally after
+            failover, but the reason for the transition should be reviewed in the Proxmox logs.
+
+      master_item:
+        key: proxmox.ceph.raw.mgr
+      lld_macro_paths:
+      - lld_macro: '{#MGRNAME}'
+        path: $.name
+      - lld_macro: '{#MGRHOST}'
+        path: $.host
+      - lld_macro: '{#MGRSTATE}'
+        path: $.state
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.mgr
+
+    # ── Pool discovery ────────────────────────────────────────────────────────
+    - uuid: 661abad4414c411ba43a36ec4c01377a
+      name: Discover Pools
+      type: DEPENDENT
+      key: ceph.pool.discovery
+      delay: '0'
+      item_prototypes:
+      - uuid: 78840dbc4b9047c6ab74fa25544692c1
+        name: 'Pool {#POOLNAME} Bytes Used'
+        type: DEPENDENT
+        key: ceph.pool.bytes_used[{#POOLID}]
+        delay: '0'
+        history: 90d
+        value_type: FLOAT
+        units: B
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var id = '{#POOLID}';
+            var pools = Array.isArray(d) ? d : [];
+            for (var i = 0; i < pools.length; i++) {
+                if (String(pools[i].pool) === id) return pools[i].bytes_used || 0;
+            }
+            return 0;
+        master_item:
+          key: proxmox.ceph.raw.pool
+        tags:
+        - tag: component
+          value: pool
+        - tag: pool
+          value: '{#POOLNAME}'
+
+      - uuid: c31b9b2e71aa40719b301e90af3f8bc9
+        name: 'Pool {#POOLNAME} Usage %'
+        type: DEPENDENT
+        key: ceph.pool.usage.pct[{#POOLID}]
+        delay: '0'
+        history: 90d
+        value_type: FLOAT
+        units: '%'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var id = '{#POOLID}';
+            var pools = Array.isArray(d) ? d : [];
+            for (var i = 0; i < pools.length; i++) {
+                if (String(pools[i].pool) === id) return ((pools[i].percent_used || 0) * 100).toFixed(2);
+            }
+            return 0;
+        master_item:
+          key: proxmox.ceph.raw.pool
+        tags:
+        - tag: component
+          value: pool
+        - tag: pool
+          value: '{#POOLNAME}'
+        trigger_prototypes:
+        - uuid: 4d8453bcf70d474b89ab59d27f75eb03
+          expression: last(/Proxmox Ceph API/ceph.pool.usage.pct[{#POOLID}])>{$CEPH.POOL.USAGE.HIGH}
+          name: 'Pool {#POOLNAME} usage critical: {ITEM.LASTVALUE}% (threshold: {$CEPH.POOL.USAGE.HIGH}%)'
+          priority: AVERAGE
+          description: Ceph pool {#POOLNAME} is {ITEM.LASTVALUE}% full. The cluster-level safe nearfull alarm
+            is the primary capacity alert — this per-pool trigger is supplementary context for the TOC.
+            Investigate during working hours and plan capacity expansion to avoid write failures.
+        - uuid: 8b6bb28db818459eaa987e7743e52d69
+          expression: last(/Proxmox Ceph API/ceph.pool.usage.pct[{#POOLID}])>{$CEPH.POOL.USAGE.WARN}
+            and last(/Proxmox Ceph API/ceph.pool.usage.pct[{#POOLID}])<={$CEPH.POOL.USAGE.HIGH}
+          name: 'Pool {#POOLNAME} usage high: {ITEM.LASTVALUE}% (threshold: {$CEPH.POOL.USAGE.WARN}%)'
+          priority: AVERAGE
+          description: Ceph pool {#POOLNAME} usage is above the warning threshold ({$CEPH.POOL.USAGE.WARN}%).
+            Plan capacity expansion ahead of the critical threshold to avoid write failures.
+
+      - uuid: a62a83ce64f745f1b573250b89bb75a5
+        name: 'Pool {#POOLNAME} PG Count'
+        type: DEPENDENT
+        key: ceph.pool.pg_num[{#POOLID}]
+        delay: '0'
+        history: 90d
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var id = '{#POOLID}';
+            var pools = Array.isArray(d) ? d : [];
+            for (var i = 0; i < pools.length; i++) {
+                if (String(pools[i].pool) === id) return pools[i].pg_num || 0;
+            }
+            return 0;
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 10m
+        master_item:
+          key: proxmox.ceph.raw.pool
+        tags:
+        - tag: component
+          value: pool
+        - tag: pool
+          value: '{#POOLNAME}'
+
+      - uuid: 702d985022294aa7a34e2e3d5d44e705
+        name: 'Pool {#POOLNAME} Replication Size'
+        type: DEPENDENT
+        key: ceph.pool.size[{#POOLID}]
+        delay: '0'
+        history: 90d
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var id = '{#POOLID}';
+            var pools = Array.isArray(d) ? d : [];
+            for (var i = 0; i < pools.length; i++) {
+                if (String(pools[i].pool) === id) return pools[i].size || 0;
+            }
+            return 0;
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 1h
+        master_item:
+          key: proxmox.ceph.raw.pool
+        tags:
+        - tag: component
+          value: pool
+        - tag: pool
+          value: '{#POOLNAME}'
+        trigger_prototypes:
+        - uuid: 366891a14dd8490bb7713a675c92b29d
+          expression: last(/Proxmox Ceph API/ceph.pool.size[{#POOLID}])<3
+            and last(/Proxmox Ceph API/ceph.pool.size[{#POOLID}])>0
+          name: 'Pool {#POOLNAME} replication size is {ITEM.LASTVALUE} (expected 3)'
+          priority: AVERAGE
+          description: Pool {#POOLNAME} has fewer than 3 replicas configured. Reduced replication means fewer
+            copies of data exist simultaneously. A single OSD failure could result in data loss for this pool.
+            Restore the replication factor by running
+            "ceph osd pool set {#POOLNAME} size 3"
+
+      - uuid: 88f8dd1fb07e438295dc21fddf0fde1d
+        name: 'Pool {#POOLNAME} Min Size'
+        type: DEPENDENT
+        key: ceph.pool.min_size[{#POOLID}]
+        delay: '0'
+        history: 90d
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var id = '{#POOLID}';
+            var pools = Array.isArray(d) ? d : [];
+            for (var i = 0; i < pools.length; i++) {
+                if (String(pools[i].pool) === id) return pools[i].min_size || 0;
+            }
+            return 0;
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 1h
+        master_item:
+          key: proxmox.ceph.raw.pool
+        tags:
+        - tag: component
+          value: pool
+        - tag: pool
+          value: '{#POOLNAME}'
+
+      - uuid: 654c69485bc24a909ecc538641bef43f
+        name: 'Pool {#POOLNAME} PG Autoscale Mode'
+        type: DEPENDENT
+        key: ceph.pool.pg_autoscale_mode[{#POOLID}]
+        delay: '0'
+        history: 90d
+        value_type: TEXT
+        trends: '0'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var d = JSON.parse(value);
+            var id = '{#POOLID}';
+            var pools = Array.isArray(d) ? d : [];
+            for (var i = 0; i < pools.length; i++) {
+                if (String(pools[i].pool) === id) return pools[i].pg_autoscale_mode || 'unknown';
+            }
+            return 'unknown';
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 1h
+        master_item:
+          key: proxmox.ceph.raw.pool
+        tags:
+        - tag: component
+          value: pool
+        - tag: pool
+          value: '{#POOLNAME}'
+        trigger_prototypes:
+        - uuid: c16c27c38da848d99a0c6a59e02bbba6
+          expression: change(/Proxmox Ceph API/ceph.pool.pg_autoscale_mode[{#POOLID}])=1
+          name: 'Pool {#POOLNAME} PG autoscale mode changed to {ITEM.LASTVALUE}'
+          priority: INFO
+          manual_close: 'YES'
+          description: The PG autoscale mode for pool {#POOLNAME} has changed to {ITEM.LASTVALUE}. In 'on'
+            mode Ceph will automatically adjust PG counts. In 'warn' mode it will alert but not adjust. In
+            'off' mode PG counts must be managed manually. No immediate action is needed unless unexpected.
+
+      master_item:
+        key: proxmox.ceph.raw.pool
+      lld_macro_paths:
+      - lld_macro: '{#POOLID}'
+        path: $.pool
+      - lld_macro: '{#POOLNAME}'
+        path: $.pool_name
+      - lld_macro: '{#POOLTYPE}'
+        path: $.type
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.pool
+
+    macros:
+    - macro: '{$PVE.URL.HOST}'
+      description: Proxmox host or load balancer address (no port, no protocol) e.g. 10.181.55.15
+    - macro: '{$PVE.TOKEN.ID}'
+      description: Proxmox API token ID in the format user@realm!tokenname e.g. zabbix@pve!ZabbixMonitoring
+    - macro: '{$PVE.TOKEN.SECRET}'
+      type: SECRET_TEXT
+      description: Proxmox API token secret (UUID format)
+    - macro: '{$CEPH.CLUSTER.USAGE.WARN}'
+      value: '70'
+      description: Cluster storage usage % WARNING threshold. Alert fires above this level.
+    - macro: '{$CEPH.CLUSTER.USAGE.HIGH}'
+      value: '85'
+      description: Cluster storage usage % HIGH threshold. Above this Ceph may mark OSDs nearfull.
+    - macro: '{$CEPH.OSD.USAGE.WARN}'
+      value: '75'
+      description: Per-OSD usage % WARNING threshold.
+    - macro: '{$CEPH.OSD.USAGE.HIGH}'
+      value: '85'
+      description: Per-OSD usage % HIGH/critical threshold.
+    - macro: '{$CEPH.OSD.LATENCY.WARN}'
+      value: '50'
+      description: OSD apply/commit latency WARNING threshold in milliseconds.
+    - macro: '{$CEPH.POOL.USAGE.WARN}'
+      value: '70'
+      description: Per-pool usage % WARNING threshold.
+    - macro: '{$CEPH.POOL.USAGE.HIGH}'
+      value: '85'
+      description: Per-pool usage % HIGH/critical threshold.
