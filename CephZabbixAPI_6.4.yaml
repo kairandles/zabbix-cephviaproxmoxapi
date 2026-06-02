@@ -27,11 +27,10 @@ zabbix_export:
       value_type: TEXT
       trends: '0'
       url: https://{$PVE.URL.HOST}:8006/api2/json/cluster/ceph/status
+      timeout: 15s
       headers:
       - name: Authorization
         value: 'PVEAPIToken={$PVE.TOKEN.ID}={$PVE.TOKEN.SECRET}'
-      verify_peer: 'NO'
-      verify_host: 'NO'
       preprocessing:
       - type: JSONPATH
         parameters:
@@ -49,11 +48,10 @@ zabbix_export:
       value_type: TEXT
       trends: '0'
       url: https://{$PVE.URL.HOST}:8006/api2/json/nodes/{$PVE.NODE}/ceph/osd
+      timeout: 15s
       headers:
       - name: Authorization
         value: 'PVEAPIToken={$PVE.TOKEN.ID}={$PVE.TOKEN.SECRET}'
-      verify_peer: 'NO'
-      verify_host: 'NO'
       preprocessing:
       - type: JSONPATH
         parameters:
@@ -71,11 +69,10 @@ zabbix_export:
       value_type: TEXT
       trends: '0'
       url: https://{$PVE.URL.HOST}:8006/api2/json/nodes/{$PVE.NODE}/ceph/mon
+      timeout: 15s
       headers:
       - name: Authorization
         value: 'PVEAPIToken={$PVE.TOKEN.ID}={$PVE.TOKEN.SECRET}'
-      verify_peer: 'NO'
-      verify_host: 'NO'
       preprocessing:
       - type: JSONPATH
         parameters:
@@ -93,11 +90,10 @@ zabbix_export:
       value_type: TEXT
       trends: '0'
       url: https://{$PVE.URL.HOST}:8006/api2/json/nodes/{$PVE.NODE}/ceph/mgr
+      timeout: 15s
       headers:
       - name: Authorization
         value: 'PVEAPIToken={$PVE.TOKEN.ID}={$PVE.TOKEN.SECRET}'
-      verify_peer: 'NO'
-      verify_host: 'NO'
       preprocessing:
       - type: JSONPATH
         parameters:
@@ -115,11 +111,10 @@ zabbix_export:
       value_type: TEXT
       trends: '0'
       url: https://{$PVE.URL.HOST}:8006/api2/json/nodes/{$PVE.NODE}/ceph/pool
+      timeout: 15s
       headers:
       - name: Authorization
         value: 'PVEAPIToken={$PVE.TOKEN.ID}={$PVE.TOKEN.SECRET}'
-      verify_peer: 'NO'
-      verify_host: 'NO'
       preprocessing:
       - type: JSONPATH
         parameters:
@@ -1164,10 +1159,6 @@ zabbix_export:
         path: $.host
       - lld_macro: '{#MONADDR}'
         path: $.addr
-      preprocessing:
-      - type: JSONPATH
-        parameters:
-        - $.mon
 
     # ── MGR discovery ─────────────────────────────────────────────────────────
     - uuid: b5d3a0f9684648e386ab2339934fd4d2
@@ -1224,10 +1215,6 @@ zabbix_export:
         path: $.host
       - lld_macro: '{#MGRSTATE}'
         path: $.state
-      preprocessing:
-      - type: JSONPATH
-        parameters:
-        - $.mgr
 
     # ── Pool discovery ────────────────────────────────────────────────────────
     - uuid: 661abad4414c411ba43a36ec4c01377a
@@ -1447,10 +1434,6 @@ zabbix_export:
         path: $.pool_name
       - lld_macro: '{#POOLTYPE}'
         path: $.type
-      preprocessing:
-      - type: JSONPATH
-        parameters:
-        - $.pool
 
     macros:
     - macro: '{$PVE.URL.HOST}'
